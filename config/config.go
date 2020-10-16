@@ -2,10 +2,13 @@ package config
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -43,13 +46,43 @@ type Config struct {
 
 	TurnAddress    string `default:"0.0.0.0:3478" required:"true" split_words:"true"`
 	TurnStrictAuth bool   `default:"true" split_words:"true"`
+	TurnPortRange  string `split_words:"true"`
 
 	TrustProxyHeaders  bool     `split_words:"true"`
 	AuthMode           string   `default:"turn" split_words:"true"`
 	CorsAllowedOrigins []string `split_words:"true"`
 	UsersFile          string   `split_words:"true"`
+	Prometheus         bool     `split_words:"true"`
 
 	CheckOrigin func(string) bool `ignored:"true" json:"-"`
+}
+
+func (c Config) parsePortRange() (uint16, uint16, error) {
+	if c.TurnPortRange == "" {
+		return 0, 0, nil
+	}
+
+	parts := strings.Split(c.TurnPortRange, ":")
+	if len(parts) != 2 {
+		return 0, 0, errors.New("must include one colon")
+	}
+	stringMin := parts[0]
+	stringMax := parts[1]
+	min64, err := strconv.ParseUint(stringMin, 10, 16)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid min: %s", err)
+	}
+	max64, err := strconv.ParseUint(stringMax, 10, 16)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid max: %s", err)
+	}
+
+	return uint16(min64), uint16(max64), nil
+}
+
+func (c Config) PortRange() (uint16, uint16, bool) {
+	min, max, _ := c.parsePortRange()
+	return min, max, min != 0 && max != 0
 }
 
 // Get loads the application config.
@@ -135,6 +168,25 @@ func Get() (Config, []FutureLog) {
 		} else {
 			logs = append(logs, futureFatal(fmt.Sprintf("cannot create secret %s", err)))
 		}
+	}
+
+	if net.ParseIP(config.ExternalIP) == nil || config.ExternalIP == "0.0.0.0" {
+		logs = append(logs, futureFatal(fmt.Sprintf("invalid SCREEGO_EXTERNAL_IP: %s", config.ExternalIP)))
+	}
+
+	min, max, err := config.parsePortRange()
+	if err != nil {
+		logs = append(logs, futureFatal(fmt.Sprintf("invalid SCREEGO_TURN_PORT_RANGE: %s", err)))
+	} else if min == 0 && max == 0 {
+		// valid; no port range
+	} else if min == 0 || max == 0 {
+		logs = append(logs, futureFatal("invalid SCREEGO_TURN_PORT_RANGE: min or max port is 0"))
+	} else if min > max {
+		logs = append(logs, futureFatal(fmt.Sprintf("invalid SCREEGO_TURN_PORT_RANGE: min port (%d) is higher than max port (%d)", min, max)))
+	} else if (max - min) < 40 {
+		logs = append(logs, FutureLog{
+			Level: zerolog.WarnLevel,
+			Msg:   "Less than 40 ports are available for turn. When using multiple TURN connections this may not be enough"})
 	}
 
 	return config, logs

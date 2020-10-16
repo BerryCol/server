@@ -32,6 +32,9 @@ func (e *Create) Execute(rooms *Rooms, current ClientInfo) error {
 	}
 
 	name := e.UserName
+	if current.Authenticated {
+		name = current.AuthenticatedUser
+	}
 	if name == "" {
 		name = util.NewName()
 	}
@@ -57,17 +60,19 @@ func (e *Create) Execute(rooms *Rooms, current ClientInfo) error {
 		Sessions:          map[xid.ID]*RoomSession{},
 		Users: map[xid.ID]*User{
 			current.ID: {
-				ID:      current.ID,
-				Name:    name,
-				Sharing: false,
-				Owner:   true,
-				Addr:    current.Addr,
-				Write:   current.Write,
-				Close:   current.Close,
+				ID:        current.ID,
+				Name:      name,
+				Streaming: false,
+				Owner:     true,
+				Addr:      current.Addr,
+				Write:     current.Write,
+				Close:     current.Close,
 			},
 		},
 	}
 	rooms.Rooms[e.ID] = room
 	room.notifyInfoChanged()
+	usersJoinedTotal.Inc()
+	roomsCreatedTotal.Inc()
 	return nil
 }

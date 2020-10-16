@@ -17,11 +17,11 @@ type Room struct {
 }
 
 type User struct {
-	ID      xid.ID `json:"id"`
-	Name    string `json:"name"`
-	Sharing bool   `json:"sharing"`
-	You     bool   `json:"you"`
-	Owner   bool   `json:"owner"`
+	ID        xid.ID `json:"id"`
+	Name      string `json:"name"`
+	Streaming bool   `json:"streaming"`
+	You       bool   `json:"you"`
+	Owner     bool   `json:"owner"`
 }
 
 func (Room) Type() string {
@@ -81,6 +81,12 @@ type HostOffer P2PMessage
 
 func (HostOffer) Type() string {
 	return "hostoffer"
+}
+
+type EndShare xid.ID
+
+func (EndShare) Type() string {
+	return "endshare"
 }
 
 type ConnectionMode string
